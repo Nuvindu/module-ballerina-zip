@@ -304,13 +304,11 @@ public final class Reader {
                 // size of one buffer.
                 if (byteLimit >= 0 && written + count > byteLimit) {
                     out.close();
-                    Files.deleteIfExists(target);
-                    return SIZE_EXCEEDED;
+                    return removePartial(target, entryName, SIZE_EXCEEDED);
                 }
                 if (ratioExceeded(content, written + count, maxCompressionRatio)) {
                     out.close();
-                    Files.deleteIfExists(target);
-                    return RATIO_EXCEEDED;
+                    return removePartial(target, entryName, RATIO_EXCEEDED);
                 }
                 out.write(buffer, 0, count);
                 written += count;
@@ -325,6 +323,19 @@ public final class Reader {
             return ZipErrors.fileSystem("cannot extract entry '" + entryName
                     + "': the content could not be written to '" + target + "'");
         }
+    }
+
+    private static Object removePartial(Path target, String entryName, long refused) {
+        // Section 8.2 has a write past a ceiling refused, so the chunks already written are removed
+        // rather than left as a truncated file. A failure to remove them gets its own message, since
+        // the content itself was written without fault.
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException e) {
+            return ZipErrors.fileSystem("cannot extract entry '" + entryName
+                    + "': the partly written file '" + target + "' could not be removed");
+        }
+        return refused;
     }
 
     /**
